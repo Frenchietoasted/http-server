@@ -1,3 +1,4 @@
+//run using 'gcc server.c -o server -lws2_32 -lmswsock' then ./server
 #include <stdio.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
