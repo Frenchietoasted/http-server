@@ -5,11 +5,12 @@
 
 void serveClient(SOCKET);
 HANDLE getFile(SOCKET, char *);
-int sendFile(SOCKET, HANDLE);
+int sendFile(SOCKET, HANDLE,char *);
 
 int main()
 {
     WSADATA wsa;
+    int count=1;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
     {
         WSACleanup();
@@ -33,6 +34,7 @@ int main()
     while (1)
     {
         serveClient(s);
+        printf("\n%d Requests Done\n",count++);
     }
 
     int err = WSAGetLastError(); // Check for errors if any
@@ -54,19 +56,28 @@ void serveClient(SOCKET s)
         printf("accept failed: %d\n", WSAGetLastError());
         return;
     }
-    char buffer[256] = {0};
+    char buffer[1028] = {0};
 
-    int recvBytes = recv(client, buffer, 256, 0);
-    char *file = "file.html";
-    //*strchr(file, ' ') = 0; // removes the blank space at the end of the filename in the https request
+    int recvBytes = recv(client, buffer, 1028, 0);
+    printf("%s",buffer);
+    char *file = buffer+5;
+    *strchr(file, ' ') = 0; // removes the blank space at the end of the filename in the https request
     printf("\nBytes: %d \nServer recieved: %s", recvBytes, file);
-
+    if(!strcmp(file,"favicon.ico")) {
+        shutdown(client, SD_SEND);
+        closesocket(client);
+        return;
+    }
+    if(strlen(file)==0){
+        file="file.html";
+        printf("\nrerouted %s",file);
+    }
     HANDLE hFile = getFile(client, file);
 
     if (hFile == INVALID_HANDLE_VALUE)
     {
         DWORD err = GetLastError();
-        printf("error in file Handle");
+        printf("\nerror in file Handle");
         send(client,
              "HTTP/1.1 404 Not Found\r\n"
              "Content-Type: text/plain\r\n"
@@ -79,11 +90,12 @@ void serveClient(SOCKET s)
         return;
     }
 
-    if (!sendFile(client, hFile))
+    if (!sendFile(client, hFile,file))
     {
         printf("\nTransmit failed: %d",WSAGetLastError());
         return;
     }
+    
     CloseHandle(hFile);
     shutdown(client, SD_SEND);
     closesocket(client);
@@ -99,27 +111,30 @@ HANDLE getFile(SOCKET client, char *file)
         OPEN_EXISTING, // MUST already exist
         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
         NULL);
-
     printf("\nFile ready");
     return hFile;
 }
 
-int sendFile(SOCKET client, HANDLE hFile)
+int sendFile(SOCKET client, HANDLE hFile, char *file)
 {
     LARGE_INTEGER fileSize;
     GetFileSizeEx(hFile, &fileSize);
 
+    printf("\nExtracting extention: ");
+    char *extention=strchr(file, '.')+1; //point to the character after the dot(.)
+    printf("\n%s",extention);
+    
     char header[256];
-
+    
     _snprintf_s(
         header,
         sizeof(header),
         _TRUNCATE,
         "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/html\r\n"
+        "Content-Type: text/%s\r\n"
         "Content-Length: %lld\r\n"
         "Connection: close\r\n"
-        "\r\n",
+        "\r\n",extention,
         fileSize.QuadPart);
 
     BOOL noDelay = TRUE;
